@@ -62,10 +62,6 @@
     			<a q-on="click: openSlider(e, 'innerArchive')" href="javascript:void(0)">所有文章</a>
     			
             
-    			
-    			<a q-on="click: openSlider(e, 'aboutme')" href="javascript:void(0)">关于我</a>
-    			
-            
 		</nav>
 		<nav class="header-nav">
 			<div class="social">
@@ -157,107 +153,9 @@
       
         <h2 id="HashMap线程不安全原因分析"><a href="#HashMap线程不安全原因分析" class="headerlink" title="HashMap线程不安全原因分析"></a>HashMap线程不安全原因分析</h2><p>HashMap一直都是被公认的非线程安全的容器，但是它非线程安全的地方是什么。</p>
 <p>第一感觉，大家都会认为hashMap在多线程情况下，相同的key，向容器中添加不同数据时，会出现不同的脏读的情况，但是细想之后才发现不是这个原因。</p>
-<p><strong>测试代码：</strong></p>
-<pre><code>public static void hashMapTest(){
-
-    for(int i=0;i&lt;10000;i++){
-
-        new Thread(new Runnable() {
-
-            @Override
-            public void run() {
-                //hashMap在扩容时，调用resize方法，该方法没有加锁，所以就会出现线程安全问题；
-                //此处hashMap中的Entry链表形成环形数据结果，Entry的next节点永远不为空,产生死循环
-                hashMap.put(UUID.randomUUID().toString(), &quot;&quot;);
-            }
-        }).start();
-
-    }
-    System.out.println(&quot;end&quot;);
-
-}
-</code></pre><p>以上的测试代码，会出现死循环，无法向hashmap中添加数据。</p>
-<p>所以，hashMap线程不安全的真正原因是，hashMap在扩容时，节点会出现死循环。</p>
-<hr>
-<p><strong>源码分析：</strong></p>
-<p>hashMap的添加元素的put()方法：</p>
-<pre><code>public V put(K key, V value) {
-    if (table == EMPTY_TABLE) {
-        inflateTable(threshold);
-    }
-    if (key == null)
-        return putForNullKey(value);
-
-    int hash = hash(key);
-    int i = indexFor(hash, table.length);
-
-    //循环如果是已有的key，则更新key的值
-    for (Entry&lt;K,V&gt; e = table[i]; e != null; e = e.next) {
-        Object k;
-        if (e.hash == hash &amp;&amp; ((k = e.key) == key || key.equals(k))) {
-            V oldValue = e.value;
-            e.value = value;
-            e.recordAccess(this);
-            return oldValue;
-        }
-    }
-
-    modCount++;
-    //没有这个key，添加这个&lt;key，value&gt;
-    addEntry(hash, key, value, i);
-    return null;
-}
-</code></pre><p>添加Entry时，如果大小不足，调用resize方法进行扩容</p>
-<pre><code>void addEntry(int hash, K key, V value, int bucketIndex) {
-    if ((size &gt;= threshold) &amp;&amp; (null != table[bucketIndex])) {
-        resize(2 * table.length);
-        hash = (null != key) ? hash(key) : 0;
-        bucketIndex = indexFor(hash, table.length);
-    }
-
-    createEntry(hash, key, value, bucketIndex);
-}
-</code></pre><p>调用resize进行扩容时，调用transfer方法，将当前的table复制到新table    </p>
-<pre><code>void resize(int newCapacity) {
-    Entry[] oldTable = table;
-    int oldCapacity = oldTable.length;
-    if (oldCapacity == MAXIMUM_CAPACITY) {
-        threshold = Integer.MAX_VALUE;
-        return;
-    }
-
-    Entry[] newTable = new Entry[newCapacity];
-    transfer(newTable, initHashSeedAsNeeded(newCapacity));
-    table = newTable;
-    threshold = (int)Math.min(newCapacity * loadFactor, MAXIMUM_CAPACITY + 1);
-}
-</code></pre><p>由于没有加锁，所以使用table进行迭代时，如果在复制之后，一个线程删除了某个元素，这是元素还是会存在；<br>同时由于遍历时，使用头插法，可能会出现两个线程同时复制一个元素时，一个已经将节点插入了，另一个才开始插入，这时头结点循环指向自己，然后e被赋值为自己，进入死循环。</p>
-<pre><code>void transfer(Entry[] newTable, boolean rehash) {
-    int newCapacity = newTable.length;
-    for (Entry&lt;K,V&gt; e : table) {
-        while(null != e) {
-            Entry&lt;K,V&gt; next = e.next;
-            if (rehash) {
-                e.hash = null == e.key ? 0 : hash(e.key);
-            }
-            int i = indexFor(e.hash, newCapacity);
-            //线程2这时开始将next设置为e,但是线程2已经将newTable[i]变为e
-            e.next = newTable[i];
-            //线程1已经完成插入，将newTable[i]变为了e
-            newTable[i] = e;
-            e = next;
-        }
-    }
-}
-</code></pre><p>可以看出hashMap中的Entry是一个链表</p>
-<pre><code>static class Entry&lt;K,V&gt; implements Map.Entry&lt;K,V&gt; {
-    final K key;
-    V value;
-    Entry&lt;K,V&gt; next;
-    int hash;
-    ......
-}
-</code></pre>
+        
+          <a class="article-more-a" href="/2017/07/14/hashmap/#more">more >></a>
+        
       
 
       
@@ -325,7 +223,7 @@
         
   
     <h1 itemprop="name">
-      <a class="article-title" href="/2017/07/14/session/">session</a>
+      <a class="article-title" href="/2017/07/14/session/">session浅析</a>
     </h1>
   
 
@@ -339,59 +237,9 @@
     <div class="article-entry" itemprop="articleBody">
       
         <h1 id="session与cookie的概念"><a href="#session与cookie的概念" class="headerlink" title="session与cookie的概念"></a>session与cookie的概念</h1><p>当浏览器和服务器进行交互时，由于http协议是无状态的，服务端无法判断浏览器前后两次请求之间的关联，为了解决这个问题，就出现了cookie和session机制。</p>
-<p>###cookie：<br>cookie是服务器端写入http的响应头中的一些信息，客户端浏览器通过某种方式将这些信息放入内存或者存入本地；下次，当客户端对同一应用发起请求时，客户端会将cookie的信息携带在http头中，传给服务端；这是一种在客户端保持状态的方式。</p>
-<p>###session：<br>由于通过客户端来保持状态会存在安全隐患（如：cookie中的数据被修改），所以又出现了session的机制。即服务端将需要的数据保存在本地，而不是保存在客户端，同时服务端还为客户端生成一个唯一的sessionId，并把sessionId的信息写入到http响应的cookie的jsessionid中；客户端第二次访问时，就会将sessionId写入到http请求头中，这时，服务端会根据sessionId读取保存的数据。</p>
-<h1 id="浏览器关闭cookie解决方法"><a href="#浏览器关闭cookie解决方法" class="headerlink" title="浏览器关闭cookie解决方法"></a>浏览器关闭cookie解决方法</h1><p>虽让通过cookie和session能解决http无状态的问题，但是，在浏览器端会出现禁用cookie的现象，即浏览器不会把服务端写入到http响应中的cookie信息保存，这时，浏览器每次对服务端请求时，都不会携带jsessionid信息，所以服务端每次都会重新生成一个sessionId写入到响应流中。验证方式，可以通过将浏览器的cookie进行禁用，然后在浏览器中查看http的请求和响应头中的消息，会发现每次响应的头信息中的jsessionid的值是不一样的，而且请求头中是不包含jsessionid这个字段信息的。</p>
-<p>为了解决浏览器禁用cookie的情形，可以通过URL重写和表单隐藏两种方式来强制让每次请求中携带jsessionId的信息。</p>
-<p>###URL重写：<br>把sessionId的信息直接附加在请求的URL后面，即在末尾添加jsessionid，附加后的结果为</p>
-<blockquote>
-<p><a href="http://...../xxx;jsessionid=ByOK3vjFD75aPnrF7C2HmdnV6QZcEbzWoWiBYEnLerjQ99zWpBng!-145788764" target="_blank" rel="external">http://...../xxx;jsessionid=ByOK3vjFD75aPnrF7C2HmdnV6QZcEbzWoWiBYEnLerjQ99zWpBng!-145788764</a></p>
-</blockquote>
-<p>服务单在接受到以上的URL形式时，会自动解析获取sessionId的值</p>
-<p>对于服务端，Java可以通过httpServletResponse的encodeURL（’url’）方法来自动实现URL重写，不过该方法需要服务端对每个客户端请求的URL都进行重写才能保证有效。</p>
-<p>###表单隐藏：</p>
-<p>即服务端在客户端提交的表单中增加一个隐藏的表单域，来将请求中增加sessionId的信息。</p>
-<p>将字段隐藏在HTML表单中，但不在客户端显示。比如在第一张页面中输入用户名和密码登陆，服务器生成响应返回第二张页面。当第二张页面提交时可能仍然需要知道来自第一张页面中的用户名。<br>那么就可以通过隐藏表单域来实现这一连续的过程。当第一张页面提交后，服务器端作出响应返回第二张页面，此页面中用隐藏域记录了来自登陆时的用户名。通俗说就是当服务器回发给客户端的响应中，就同时把用户名再次回发到客户端，用隐藏域隐藏起来，是不可见的。当第二张页面提交时，此隐藏域中的用户名一并随表单提交。这样服务器就仍然可以判断此用户是否与以前的用户相同。于是，再次处理完结果后继续将响应回发给客户端，且此响应中也仍然包含了用户名，在客户端中仍然用隐藏域将这一信息隐藏。<br>这样就完成了一个连续请求的动作，但是对于用户，这是不可见的。</p>
-<p>对于表单的格式就是类似URL重写，即添加如下的隐藏域即可：</p>
-<pre><code>&lt;form action = &apos;xxx&apos; &gt;
-    &lt;input type=&apos;hidden&apos; name=&apos;jsessionid&apos; value=&apos;需要设置的sessionId的值&apos; /&gt;
-&lt;/form&gt;
-</code></pre><h1 id="集群环境下session同步问题"><a href="#集群环境下session同步问题" class="headerlink" title="集群环境下session同步问题"></a>集群环境下session同步问题</h1><p>在集群环境下，用户第一次访问应用A1，服务器将需要的数据存入Session中；<br>当用户第二次请求时，请求消息到到应用A2，这时服务器需要通过Session将用户第一次请求时保存的数据读取出来；<br>但是因为对于应用A2来说，因为用户第一次请求是向A1发起的，数据也是存在A1的Session上的，这时A2想通过Session取数据时，就会出现取不到数据的情况。</p>
-<h1 id="集群环境下session同步问题解决方法"><a href="#集群环境下session同步问题解决方法" class="headerlink" title="集群环境下session同步问题解决方法"></a>集群环境下session同步问题解决方法</h1><h3 id="session-sticky-："><a href="#session-sticky-：" class="headerlink" title="session sticky ："></a>session sticky ：</h3><p>在浏览器进行请求时，通过负载均衡器，能根据每次请求的会话标识来进行请求的转发，将用户的访问都转发到同一台机器上；</p>
-<p><strong>存在问题</strong>：</p>
-<ol>
-<li>如果一台服务器宕机了，服务器上的数据就会丢失，这时就需要用户进行再次操作；</li>
-<li>会话标识是应用层的信息，那么负载均衡器要将同一个会话的请求都保存到同一个Web服务器上的话，就需要进行应用层的解析，这个开销比第四层交换（LVS负载均衡器属于第四层）要大。</li>
-<li>负载均衡器变为一个有状态的节点，要将会话保存到具体的Web服务器的映射。和无状态的节点相比，内存消耗会更大，容灾方面会更麻烦。</li>
-</ol>
-<h3 id="session-replication-："><a href="#session-replication-：" class="headerlink" title="session replication ："></a>session replication ：</h3><p>此方案不用再要求负载均衡器保证同一个会话的多次请求必须到同一个Web服务器上了。我们在Web服务器之间增加了会话数据的同步，通过同步就保证了不同Web服务器之间Session数据的一致。一般应用容器都支持Session Replication方式，与Session Sticky方案相比，Session Replication方式对负载均衡器没有那么多的要求。</p>
-<p><strong>存在问题</strong>：</p>
-<ol>
-<li>同步Session数据造成了网络带宽的开销。只要Session数据有变化，就需要将数据同步到所有其他机器上，机器越多，同步带来的网络带宽开销就越大。</li>
-<li>每台Web服务器都要保存所有Session数据，如果整个集群的Session数据很多（很多人同时访问网站）的话，每台机器用于保存Session数据的内容占用会很严重。</li>
-</ol>
-<p>这个方案是靠应用容器来完成Session的复制从而解决Session的问题的，应用本身并不关心这个事情。这个方案不适合集群机器数多的场景。如果只有几台机器，用这个方案是可以的。</p>
-<h3 id="session数据集中存储："><a href="#session数据集中存储：" class="headerlink" title="session数据集中存储："></a>session数据集中存储：</h3><p>将集群中的所有应用的Session都统一存放起来，可以存入数据库或者缓存中，不同的Session通过SessionId来区分。对于使用redis进行缓存时，可以通过github上的开源项目</p>
-<blockquote>
-<p><a href="https://github.com/jcoleman/tomcat-redis-session-manager">https://github.com/jcoleman/tomcat-redis-session-manager</a></p>
-</blockquote>
-<p>来完成。该开源项目提供了将Tomcat生成的session都存入一个redis中的方法，由于是在Tomcat中进行集成的，所以应用中只需要按照通常的方式使用session即可。具体配置如下：</p>
-<p>需要将网上的代码copy下来，然后打成tomcat-redis-session-manager-1.20.jar(名称可以自己定义)：</p>
-<p><img src="http://i.imgur.com/eZIJFda.png" alt="tomcat-redis-manager打包"></p>
-<p>需要的jar包：</p>
-<pre><code>commons-logging-1.1.3.jar
-commons-pool2-2.2.jar
-jedis-2.5.2.jar
-tomcat-juli-8.5.6.jar
-tomcat-redis-session-manager-1.20.jar
-</code></pre><p>Tomcat中需要在context.xml中配置：</p>
-<pre><code>&lt;Valve className=&quot;com.orangefunction.tomcat.redissessions.RedisSessionHandlerValve&quot; /&gt;  
-&lt;Manager className=&quot;com.orangefunction.tomcat.redissessions.RedisSessionManager&quot; 
-    host=&quot;localhost&quot; 
-    port=&quot;6379&quot; 
-    database=&quot;1&quot; 
-    maxInactiveInterval=&quot;60&quot;/&gt;
-</code></pre>
+        
+          <a class="article-more-a" href="/2017/07/14/session/#more">more >></a>
+        
       
 
       
@@ -498,21 +346,13 @@ return o(i(t),arguments.length<2?void 0:u(arguments[1]))}})},function(t,n,r){var
       
       
     
-      
-      
-      
-    
     
 
     <ul style="width: 70%">
     
     
       
-      <li style="width: 50%" q-on="click: openSlider(e, 'innerArchive')"><a href="javascript:void(0)" q-class="active:innerArchive">所有文章</a></li>
-      
-        
-      
-      <li style="width: 50%" q-on="click: openSlider(e, 'aboutme')"><a href="javascript:void(0)" q-class="active:aboutme">关于我</a></li>
+      <li style="width: 100%" q-on="click: openSlider(e, 'innerArchive')"><a href="javascript:void(0)" q-class="active:innerArchive">所有文章</a></li>
       
         
     </ul>
@@ -593,12 +433,6 @@ return o(i(t),arguments.length<2?void 0:u(arguments[1]))}})},function(t,n,r){var
 
     
 
-    
-    	<section class="tools-section tools-section-me" q-show="aboutme">
-  	  	
-  	  		<div class="aboutme-wrap" id="js-aboutme">stay hungry&lt;br&gt;&lt;br&gt;stay foolish</div>
-  	  	
-    	</section>
     
   </div>
   
