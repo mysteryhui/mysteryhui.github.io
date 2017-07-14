@@ -6,14 +6,19 @@
   <meta name="renderer" content="webkit">
   <meta http-equiv="X-UA-Compatible" content="IE=edge" >
   <link rel="dns-prefetch" href="https://github.com/mysteryhui">
-  <title>Archives: 2017/7 | Mysteryhui</title>
+  <title>hashmap | Mysteryhui</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-  <meta property="og:type" content="website">
-<meta property="og:title" content="Mysteryhui">
-<meta property="og:url" content="https://github.com/mysteryhui/archives/2017/07/index.html">
+  <meta name="description" content="HashMap线程不安全原因分析HashMap一直都是被公认的非线程安全的容器，但是它非线程安全的地方是什么。 第一感觉，大家都会认为hashMap在多线程情况下，相同的key，向容器中添加不同数据时，会出现不同的脏读的情况，但是细想之后才发现不是这个原因。 测试代码： public static void hashMapTest(){      for(int i=0;i&amp;lt;10000;i+">
+<meta name="keywords" content="java,hashMap,集合">
+<meta property="og:type" content="article">
+<meta property="og:title" content="hashmap">
+<meta property="og:url" content="https://github.com/mysteryhui/2017/07/14/hashmap/index.html">
 <meta property="og:site_name" content="Mysteryhui">
+<meta property="og:description" content="HashMap线程不安全原因分析HashMap一直都是被公认的非线程安全的容器，但是它非线程安全的地方是什么。 第一感觉，大家都会认为hashMap在多线程情况下，相同的key，向容器中添加不同数据时，会出现不同的脏读的情况，但是细想之后才发现不是这个原因。 测试代码： public static void hashMapTest(){      for(int i=0;i&amp;lt;10000;i+">
+<meta property="og:updated_time" content="2017-07-14T05:37:59.934Z">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="Mysteryhui">
+<meta name="twitter:title" content="hashmap">
+<meta name="twitter:description" content="HashMap线程不安全原因分析HashMap一直都是被公认的非线程安全的容器，但是它非线程安全的地方是什么。 第一感觉，大家都会认为hashMap在多线程情况下，相同的key，向容器中添加不同数据时，会出现不同的脏读的情况，但是细想之后才发现不是这个原因。 测试代码： public static void hashMapTest(){      for(int i=0;i&amp;lt;10000;i+">
   
     <link rel="alternative" href="/atom.xml" title="Mysteryhui" type="application/atom+xml">
   
@@ -133,36 +138,136 @@
             <canvas data-colors="#eaeaea" data-sectionHeight="100" data-contentId="js-content" id="myCanvas1" class="anm-canvas"></canvas>
           </div>
           <div id="js-content" class="content-ll">
-            
-  
-  
+            <article id="post-hashmap" class="article article-type-post " itemscope itemprop="blogPost">
+  <div class="article-inner">
     
-    
-      
-      
-      <section class="archives-wrap">
-        <div class="archive-year-wrap">
-          <a href="/archives/2017" class="archive-year">2017</a>
-        </div>
-        <div class="archives">
-    
-    <article class="archive-article archive-type-post">
-  <div class="archive-article-inner">
-    <header class="archive-article-header">
-      	<div class="article-meta">
-	      	<a href="/2017/07/14/hashmap/" class="archive-article-date">
-  	<time datetime="2017-07-14T04:08:55.000Z" itemprop="datePublished"><i class="icon-calendar icon"></i>2017-07-14</time>
-</a>
-        </div>
-    	 
+      <header class="article-header">
+        
   
-    <h1 itemprop="name">
-      <a class="archive-article-title" href="/2017/07/14/hashmap/">hashmap</a>
+    <h1 class="article-title" itemprop="name">
+      hashmap
     </h1>
   
 
-        <div class="article-info info-on-right">
-          
+        
+        <a href="/2017/07/14/hashmap/" class="archive-article-date">
+  	<time datetime="2017-07-14T04:08:55.000Z" itemprop="datePublished"><i class="icon-calendar icon"></i>2017-07-14</time>
+</a>
+        
+      </header>
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <h2 id="HashMap线程不安全原因分析"><a href="#HashMap线程不安全原因分析" class="headerlink" title="HashMap线程不安全原因分析"></a>HashMap线程不安全原因分析</h2><p>HashMap一直都是被公认的非线程安全的容器，但是它非线程安全的地方是什么。</p>
+<p>第一感觉，大家都会认为hashMap在多线程情况下，相同的key，向容器中添加不同数据时，会出现不同的脏读的情况，但是细想之后才发现不是这个原因。</p>
+<p><strong>测试代码：</strong></p>
+<pre><code>public static void hashMapTest(){
+
+    for(int i=0;i&lt;10000;i++){
+
+        new Thread(new Runnable() {
+
+            @Override
+            public void run() {
+                //hashMap在扩容时，调用resize方法，该方法没有加锁，所以就会出现线程安全问题；
+                //此处hashMap中的Entry链表形成环形数据结果，Entry的next节点永远不为空,产生死循环
+                hashMap.put(UUID.randomUUID().toString(), &quot;&quot;);
+            }
+        }).start();
+
+    }
+    System.out.println(&quot;end&quot;);
+
+}
+</code></pre><p>以上的测试代码，会出现死循环，无法向hashmap中添加数据。</p>
+<p>所以，hashMap线程不安全的真正原因是，hashMap在扩容时，节点会出现死循环。</p>
+<hr>
+<p><strong>源码分析：</strong></p>
+<p>hashMap的添加元素的put()方法：</p>
+<pre><code>public V put(K key, V value) {
+    if (table == EMPTY_TABLE) {
+        inflateTable(threshold);
+    }
+    if (key == null)
+        return putForNullKey(value);
+
+    int hash = hash(key);
+    int i = indexFor(hash, table.length);
+
+    //循环如果是已有的key，则更新key的值
+    for (Entry&lt;K,V&gt; e = table[i]; e != null; e = e.next) {
+        Object k;
+        if (e.hash == hash &amp;&amp; ((k = e.key) == key || key.equals(k))) {
+            V oldValue = e.value;
+            e.value = value;
+            e.recordAccess(this);
+            return oldValue;
+        }
+    }
+
+    modCount++;
+    //没有这个key，添加这个&lt;key，value&gt;
+    addEntry(hash, key, value, i);
+    return null;
+}
+</code></pre><p>添加Entry时，如果大小不足，调用resize方法进行扩容</p>
+<pre><code>void addEntry(int hash, K key, V value, int bucketIndex) {
+    if ((size &gt;= threshold) &amp;&amp; (null != table[bucketIndex])) {
+        resize(2 * table.length);
+        hash = (null != key) ? hash(key) : 0;
+        bucketIndex = indexFor(hash, table.length);
+    }
+
+    createEntry(hash, key, value, bucketIndex);
+}
+</code></pre><p>调用resize进行扩容时，调用transfer方法，将当前的table复制到新table    </p>
+<pre><code>void resize(int newCapacity) {
+    Entry[] oldTable = table;
+    int oldCapacity = oldTable.length;
+    if (oldCapacity == MAXIMUM_CAPACITY) {
+        threshold = Integer.MAX_VALUE;
+        return;
+    }
+
+    Entry[] newTable = new Entry[newCapacity];
+    transfer(newTable, initHashSeedAsNeeded(newCapacity));
+    table = newTable;
+    threshold = (int)Math.min(newCapacity * loadFactor, MAXIMUM_CAPACITY + 1);
+}
+</code></pre><p>由于没有加锁，所以使用table进行迭代时，如果在复制之后，一个线程删除了某个元素，这是元素还是会存在；<br>同时由于遍历时，使用头插法，可能会出现两个线程同时复制一个元素时，一个已经将节点插入了，另一个才开始插入，这时头结点循环指向自己，然后e被赋值为自己，进入死循环。</p>
+<pre><code>void transfer(Entry[] newTable, boolean rehash) {
+    int newCapacity = newTable.length;
+    for (Entry&lt;K,V&gt; e : table) {
+        while(null != e) {
+            Entry&lt;K,V&gt; next = e.next;
+            if (rehash) {
+                e.hash = null == e.key ? 0 : hash(e.key);
+            }
+            int i = indexFor(e.hash, newCapacity);
+            //线程2这时开始将next设置为e,但是线程2已经将newTable[i]变为e
+            e.next = newTable[i];
+            //线程1已经完成插入，将newTable[i]变为了e
+            newTable[i] = e;
+            e = next;
+        }
+    }
+}
+</code></pre><p>可以看出hashMap中的Entry是一个链表</p>
+<pre><code>static class Entry&lt;K,V&gt; implements Map.Entry&lt;K,V&gt; {
+    final K key;
+    V value;
+    Entry&lt;K,V&gt; next;
+    int hash;
+    ......
+}
+</code></pre>
+      
+
+      
+    </div>
+    <div class="article-info article-info-index">
+      
+      
 	<div class="article-tag tagcloud">
 		<i class="icon-price-tags icon"></i>
 		<ul class="article-tag-list">
@@ -182,61 +287,117 @@
 		</ul>
 	</div>
 
-          
+      
 
+      
+
+      
+        
+<div class="share-btn share-icons tooltip-left">
+  <div class="tooltip tooltip-east">
+    <span class="tooltip-item">
+      <a href="javascript:;" class="share-sns share-outer">
+        <i class="icon icon-share"></i>
+      </a>
+    </span>
+    <span class="tooltip-content">
+      <div class="share-wrap">
+        <div class="share-icons">
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="icon icon-weibo"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="icon icon-weixin"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="icon icon-qq"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="icon icon-douban"></i>
+          </a>
+          <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a>
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="icon icon-facebook"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="icon icon-twitter"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="icon icon-google"></i>
+          </a>
         </div>
-        <div class="clearfix"></div>
-    </header>
+      </div>
+    </span>
+  </div>
+</div>
+
+<div class="page-modal wx-share js-wx-box">
+    <a class="close js-modal-close" href="javascript:;"><i class="icon icon-close"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="http://s.jiathis.com/qrcode.php?url=https://github.com/mysteryhui/2017/07/14/hashmap/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div class="mask js-mask"></div>
+      
+      <div class="clearfix"></div>
+    </div>
   </div>
 </article>
+
   
-    
-    
-    <article class="archive-article archive-type-post">
-  <div class="archive-article-inner">
-    <header class="archive-article-header">
-      	<div class="article-meta">
-	      	<a href="/2017/07/14/session/" class="archive-article-date">
-  	<time datetime="2017-07-14T04:02:56.000Z" itemprop="datePublished"><i class="icon-calendar icon"></i>2017-07-14</time>
-</a>
+<nav id="article-nav">
+  
+  
+    <a href="/2017/07/14/session/" id="article-nav-older" class="article-nav-link-wrap">
+      <div class="article-nav-title">session</div>
+      <i class="icon-circle-right"></i>
+    </a>
+  
+</nav>
+
+
+<aside class="wrap-side-operation">
+    <div class="mod-side-operation">
+        
+        <div class="jump-container" id="js-jump-container" style="display:none;">
+            <a href="javascript:void(0)" class="mod-side-operation__jump-to-top">
+                <i class="icon-font icon-back"></i>
+            </a>
+            <div id="js-jump-plan-container" class="jump-plan-container" style="top: -11px;">
+                <i class="icon-font icon-plane jump-plane"></i>
+            </div>
         </div>
-    	 
-  
-    <h1 itemprop="name">
-      <a class="archive-article-title" href="/2017/07/14/session/">session</a>
-    </h1>
-  
-
-        <div class="article-info info-on-right">
-          
-	<div class="article-tag tagcloud">
-		<i class="icon-price-tags icon"></i>
-		<ul class="article-tag-list">
-			 
-        		<li class="article-tag-list-item">
-        			<a href="javascript:void(0)" class="js-tag article-tag-list-link color5">java</a>
-        		</li>
-      		 
-        		<li class="article-tag-list-item">
-        			<a href="javascript:void(0)" class="js-tag article-tag-list-link color3">session</a>
-        		</li>
-      		
-		</ul>
-	</div>
-
-          
-
+        
+        
+        <div class="toc-container tooltip-left">
+            <i class="icon-font icon-category"></i>
+            <div class="tooltip tooltip-east">
+                <span class="tooltip-item">
+                </span>
+                <span class="tooltip-content">
+                    <div class="toc-article">
+                    <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#HashMap线程不安全原因分析"><span class="toc-number">1.</span> <span class="toc-text">HashMap线程不安全原因分析</span></a></li></ol>
+                    </div>
+                </span>
+            </div>
         </div>
-        <div class="clearfix"></div>
-    </header>
-  </div>
-</article>
+        
+    </div>
+</aside>
+
+
+
   
   
-    </div></section>
   
 
-    
+  
+
+  
 
 
           </div>
@@ -259,8 +420,8 @@
 	var yiliaConfig = {
 		mathjax: false,
 		isHome: false,
-		isPost: false,
-		isArchive: true,
+		isPost: true,
+		isArchive: false,
 		isTag: false,
 		isCategory: false,
 		open_in_new: false,
